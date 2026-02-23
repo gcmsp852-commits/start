@@ -450,7 +450,35 @@ function reconstructLayersFromCrop(cropImageData, N, quiet){
   const g2 = rotate180BoolGrid(g2rot);
   return { g1, g2, threshold: th };
 }
+function reconstructOneLayerFromCrop(cropImageData, N, quiet, whichLayer /*1 or 2*/, th){
+  const totalCells = N + quiet*2;
+  const virtualTotal2 = (totalCells*2) + SHIFT2; // half-unit lattice size
 
+  const W = cropImageData.width; // square
+  const scale = W / virtualTotal2; // px per half-unit
+
+  if(whichLayer === 1){
+    const g = Array.from({length:N}, ()=>Array(N).fill(false));
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const x1 = (((c + quiet)*2 + 1) * scale);
+        const y1 = (((r + quiet)*2 + 1) * scale);
+        g[r][c] = sampleIsBlack(cropImageData, x1, y1, th);
+      }
+    }
+    return g;
+  }else{
+    const grot = Array.from({length:N}, ()=>Array(N).fill(false));
+    for(let r=0;r<N;r++){
+      for(let c=0;c<N;c++){
+        const x2 = (((c + quiet)*2 + SHIFT2 + 1) * scale);
+        const y2 = (((r + quiet)*2 + SHIFT2 + 1) * scale);
+        grot[r][c] = sampleIsBlack(cropImageData, x2, y2, th);
+      }
+    }
+    return rotate180BoolGrid(grot);
+  }
+}
 // ---------- Decoder ----------
 let barcodeDetector = null;
 let zxingLoaded = false;
@@ -674,33 +702,6 @@ async function tick(){
   }finally{
     busy = false;
   }
-}
-    
-    drawGridToCanvas(cvL1, l1ctx, g1, quiet);
-    drawGridToCanvas(cvL2, l2ctx, g2, quiet);
-
-    const [t1, t2] = await Promise.all([decodeCanvasQR(cvL1), decodeCanvasQR(cvL2)]);
-
-    const ok1 = !!t1;
-    const ok2 = !!t2;
-
-    setTag($("tag1"), ok1, ok1 ? "OK" : "NG");
-    setTag($("tag2"), ok2, ok2 ? "OK" : "NG");
-    setOut($("out1"), t1 || "-");
-    setOut($("out2"), t2 || "-");
-
-    if(ok1 || ok2){
-      lastHitAt = performance.now();
-      log(`decode: L1=${ok1?"OK":"NG"}, L2=${ok2?"OK":"NG"} (th=${threshold})`, (ok1&&ok2) ? "ok" : "");
-    }
-
-  }catch(e){
-    // 必要なら次行を有効化
-    // log("tick err: " + (e.message||e), "ng");
-  }finally{
-    busy = false;
-  }
-}
 
 // ---------- Events ----------
 $("btnStart").addEventListener("click", async ()=>{
@@ -729,4 +730,5 @@ $("thFixed").disabled = true;
 </script>
 </body>
 </html>
+
 
