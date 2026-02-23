@@ -1,736 +1,277 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>QR Twin Reader (Layer1/Layer2)</title>
-  <style>
-    :root{
-      --bg:#0f111a; --panel:#171a26; --ink:#e8eef7; --muted:#9fb0c7;
-      --accent:#00f2ff; --accent2:#ff0055; --border:#2a3348; --ok:#2dd4bf; --bad:#ff4d4d;
-    }
-    *{ box-sizing:border-box; }
-    body{ margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--ink); }
-    header{
-      position:sticky; top:0; z-index:10;
-      padding:12px 14px;
-      background:rgba(23,26,38,.92); border-bottom:1px solid var(--border);
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-    }
-    header h1{ margin:0; font-size:14px; letter-spacing:.02em; color:var(--accent); }
-    .pill{ font-size:11px; color:var(--muted); border:1px solid var(--border); padding:4px 8px; border-radius:999px; background:#0c0f18; }
-    main{ max-width:980px; margin:0 auto; padding:14px; display:grid; gap:12px; }
-    .panel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
-    .row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    @media (max-width:720px){ .row{ grid-template-columns:1fr; } }
-    label{ display:block; font-size:11px; color:var(--muted); margin:6px 0 4px; }
-    input, select, button{
-      width:100%;
-      border:1px solid var(--border); border-radius:10px;
-      padding:10px 10px;
-      background:#0c0f18; color:var(--ink);
-      font-size:12px;
-    }
-    button{ cursor:pointer; font-weight:800; transition:.15s; }
-    button.primary{ border-color:var(--bad); background:linear-gradient(135deg,var(--bad),#b91c1c); color:#fff; }
-    button.secondary{ border-color:#4b5a78; }
-    button:disabled{ opacity:.45; cursor:not-allowed; }
-    .btnrow{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
-    @media (max-width:720px){ .btnrow{ grid-template-columns:1fr; } }
-
-    .camwrap{
-      position:relative;
-      border-radius:12px;
-      overflow:hidden;
-      border:1px solid var(--border);
-      background:#000;
-      aspect-ratio: 3 / 4;
-    }
-    video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
-    canvas#overlay{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-
-    .hint{
-      position:absolute; left:12px; right:12px; bottom:12px;
-      background:rgba(15,17,26,.75);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:12px;
-      padding:10px;
-      font-size:12px; color:var(--muted);
-      backdrop-filter: blur(6px);
-    }
-    .hint b{ color:var(--ink); }
-
-    .kpi{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-    @media (max-width:720px){ .kpi{ grid-template-columns:1fr; } }
-
-    .result{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#0c0f18; }
-    .result h3{ margin:0 0 6px 0; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; }
-    .tag{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
-    .tag.ok{ border-color:rgba(45,212,191,.45); color:var(--ok); }
-    .tag.ng{ border-color:rgba(255,77,77,.45); color:var(--bad); }
-    pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; }
-
-    .minirow{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
-    .minirow canvas{ width:100%; height:auto; background:#fff; border-radius:10px; border:1px solid var(--border); }
-
-    .log{ font-size:11px; color:var(--muted); max-height:140px; overflow:auto; border:1px solid var(--border); border-radius:12px; padding:10px; background:#0c0f18; }
-    .log .ok{ color:var(--ok); }
-    .log .ng{ color:var(--bad); }
-    .small{ font-size:11px; color:var(--muted); line-height:1.35; }
-    .small code{ color:var(--ink); }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QRツイン リーダー</title>
+    <script src="https://unpkg.com/@zxing/library@0.21.0/umd/index.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0; padding: 0; background-color: #121212; color: #ffffff; text-align: center;
+        }
+        h2 { margin: 15px 0; font-size: 1.2rem; }
+        .camera-container {
+            position: relative; width: 100%; max-width: 600px; margin: 0 auto; background: #000;
+        }
+        video {
+            width: 100%; display: block; object-fit: cover;
+        }
+        /* キャンバスはビデオの上に被せて、枠線を描画する */
+        canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+        }
+        .status-panel {
+            padding: 15px; background: #1e1e1e; border-top: 1px solid #333; text-align: left; max-width: 600px; margin: 0 auto;
+        }
+        .qr-result {
+            margin-bottom: 10px; padding: 10px; border-radius: 8px; background: #2c2c2c;
+        }
+        .qr-1 { border-left: 5px solid #00E676; }
+        .qr-2 { border-left: 5px solid #29B6F6; }
+        button {
+            width: 100%; padding: 15px; font-size: 1rem; font-weight: bold; background: #6200EE; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px;
+        }
+        button:active { background: #3700B3; }
+    </style>
 </head>
 <body>
-<header>
-  <h1>QR Twin Reader（重ね合わせ1枚 → Layer1/Layer2）</h1>
-  <div class="pill" id="capPill">camera: - / decoder: -</div>
-</header>
 
-<main>
-  <div class="panel">
-    <div class="row">
-      <div>
-        <label>想定バージョン（モジュール数）</label>
-        <select id="Nsel">
-          <option value="25" selected>Ver2（25×25）</option>
-          <option value="21">Ver1（21×21）</option>
-          <option value="29">Ver3（29×29）</option>
-          <option value="33">Ver4（33×33）</option>
-          <option value="37">Ver5（37×37）</option>
-          <option value="41">Ver6（41×41）</option>
-        </select>
-        <div class="small">※生成側と一致必須（基本Ver2運用ならそのまま）</div>
-      </div>
-      <div>
-        <label>Quiet Zone（生成側と同じ）</label>
-        <input id="quiet" type="number" value="4" min="0" max="20" step="1">
-        <div class="small">※Quietがズレると復元が崩れます</div>
-      </div>
+    <h2>📱 QRツイン リーダー</h2>
+    
+    <div class="camera-container">
+        <video id="video" playsinline muted></video>
+        <canvas id="canvas"></canvas>
     </div>
 
-    <div class="row">
-      <div>
-        <label>クロップ倍率（枠内にツインを大きく入れる）</label>
-        <input id="cropScale" type="range" min="0.55" max="0.95" step="0.01" value="0.78">
-        <div class="small">枠内にツインQRが“なるべく大きく”入るよう調整（認識率UP）</div>
-      </div>
-      <div>
-        <label>二値化しきい値</label>
-        <select id="thMode">
-          <option value="auto" selected>auto（推奨）</option>
-          <option value="fixed">fixed（手動）</option>
-        </select>
-        <label style="margin-top:8px;">固定しきい値（fixed時のみ）</label>
-        <input id="thFixed" type="number" value="128" min="0" max="255" step="1">
-      </div>
-    </div>
+    <div class="status-panel">
+        <div id="detectorInfo" style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">読取エンジン準備中...</div>
+        
+        <div id="result1" class="qr-result qr-1">
+            <strong>QR 1個目:</strong> <span id="text1">未検出</span>
+        </div>
+        <div id="result2" class="qr-result qr-2">
+            <strong>QR 2個目:</strong> <span id="text2">未検出</span>
+        </div>
 
-    <div class="btnrow" style="margin-top:10px;">
-      <button class="primary" id="btnStart">📷 カメラ開始</button>
-      <button class="secondary" id="btnStop" disabled>⏹ 停止</button>
-      <button class="secondary" id="btnFlip" disabled>🔁 カメラ切替</button>
+        <button id="resetBtn" style="display: none;" onclick="resetScanner()">もう一度スキャンする</button>
     </div>
-
-    <div class="small" style="margin-top:10px;">
-      <b>重要：</b>スマホは <code>https</code> で開いてください（<code>file://</code> だとカメラ不可）<br>
-      <b>この段階は：</b>PWA/ServiceWorkerは使いません（キャッシュ問題を潰すため）
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="camwrap">
-      <video id="video" playsinline muted></video>
-      <canvas id="overlay"></canvas>
-      <div class="hint">
-        枠の中に <b>QRツイン（重ね合わせ1枚）</b> を入れてください。<br>
-        成功すると <b>Layer1 / Layer2</b> が表示されます。
-      </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="kpi">
-      <div class="result">
-        <h3>Layer1 <span class="tag" id="tag1">-</span></h3>
-        <pre id="out1">-</pre>
-      </div>
-      <div class="result">
-        <h3>Layer2 <span class="tag" id="tag2">-</span></h3>
-        <pre id="out2">-</pre>
-      </div>
-    </div>
-
-    <div class="minirow">
-      <div>
-        <label>復元した Layer1 QR（デバッグ）</label>
-        <canvas id="cvL1"></canvas>
-      </div>
-      <div>
-        <label>復元した Layer2 QR（デバッグ）</label>
-        <canvas id="cvL2"></canvas>
-      </div>
-    </div>
-
-    <label style="margin-top:12px;">ログ</label>
-    <div class="log" id="log"></div>
-  </div>
-</main>
 
 <script>
-const $ = (id)=>document.getElementById(id);
-
-const video = $("video");
-const overlay = $("overlay");
-const octx = overlay.getContext("2d");
-
-const cvL1 = $("cvL1");
-const cvL2 = $("cvL2");
-const l1ctx = cvL1.getContext("2d");
-const l2ctx = cvL2.getContext("2d");
-
-const logEl = $("log");
-const capPill = $("capPill");
-
-let stream = null;
-let devices = [];
-let deviceIndex = 0;
-let rafId = null;
-let busy = false;
-
-// ★あなたのツイン仕様（Layer2は 8.5セル シフト）に合わせる
-const SHIFT_CELLS = 8.5;
-const SHIFT2 = SHIFT_CELLS * 2; // half-unit換算（=17）
-
-function log(msg, cls=""){
-  const div = document.createElement("div");
-  if(cls) div.className = cls;
-  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-  logEl.prepend(div);
-}
-
-function setTag(tagEl, ok, text){
-  tagEl.className = "tag " + (ok ? "ok" : "ng");
-  tagEl.textContent = text;
-}
-
-function setOut(outEl, text){
-  outEl.textContent = text ?? "-";
-}
-
-function drawGuide(){
-  const w = overlay.width, h = overlay.height;
-  octx.clearRect(0,0,w,h);
-
-  const s = parseFloat($("cropScale").value);
-  const side = Math.floor(Math.min(w,h) * s);
-  const x = Math.floor((w - side)/2);
-  const y = Math.floor((h - side)/2);
-
-  octx.fillStyle = "rgba(0,0,0,.35)";
-  octx.fillRect(0,0,w,h);
-  octx.clearRect(x,y,side,side);
-
-  octx.strokeStyle = "rgba(255,77,77,.9)";
-  octx.lineWidth = 3;
-  octx.strokeRect(x+1.5, y+1.5, side-3, side-3);
-
-  return {x,y,side};
-}
-
-// ---------- Camera ----------
-async function listCameras(){
-  const all = await navigator.mediaDevices.enumerateDevices();
-  devices = all.filter(d => d.kind === "videoinput");
-  if(!devices.length) throw new Error("カメラが見つかりません。");
-}
-
-async function startCamera(){
-  stopCamera();
-
-  const tryList = [
-    { audio:false, video:{ facingMode:{ ideal:"environment" }, width:{ideal:1280}, height:{ideal:720} } },
-    { audio:false, video:{ facingMode:{ ideal:"environment" } } },
-    async ()=>{
-      await listCameras();
-      const id = devices[deviceIndex]?.deviceId;
-      if(!id) throw new Error("deviceId が取得できません。");
-      return { audio:false, video:{ deviceId:{ exact:id } } };
-    }
-  ];
-
-  let lastErr = null;
-
-  for(const item of tryList){
-    try{
-      const constraints = (typeof item === "function") ? await item() : item;
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      video.srcObject = stream;
-      video.setAttribute("playsinline", "");
-      video.muted = true;
-
-      await new Promise((resolve)=>{
-        const t = setTimeout(resolve, 800);
-        video.onloadedmetadata = ()=>{ clearTimeout(t); resolve(); };
-      });
-
-      await video.play();
-      try{ await listCameras(); }catch(_){}
-
-      $("btnStart").disabled = true;
-      $("btnStop").disabled = false;
-      $("btnFlip").disabled = (devices.length < 2);
-
-      tick();
-      log("カメラ開始（OK）", "ok");
-      return;
-
-    }catch(e){
-      lastErr = e;
-    }
-  }
-
-  throw new Error("カメラ起動に失敗しました: " + (lastErr?.message || lastErr));
-}
-
-function stopCamera(){
-  if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
-  if(stream){
-    try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){}
-    stream = null;
-  }
-  video.srcObject = null;
-
-  $("btnStart").disabled = false;
-  $("btnStop").disabled = true;
-  $("btnFlip").disabled = true;
-}
-
-async function flipCamera(){
-  await listCameras();
-  deviceIndex = (deviceIndex + 1) % devices.length;
-
-  stopCamera();
-
-  const id = devices[deviceIndex]?.deviceId;
-  if(!id) throw new Error("deviceId が取得できません。");
-
-  stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ deviceId:{ exact:id } } });
-
-  video.srcObject = stream;
-  video.setAttribute("playsinline", "");
-  video.muted = true;
-
-  await new Promise((resolve)=>{
-    const t = setTimeout(resolve, 800);
-    video.onloadedmetadata = ()=>{ clearTimeout(t); resolve(); };
-  });
-
-  await video.play();
-
-  $("btnStart").disabled = true;
-  $("btnStop").disabled = false;
-  $("btnFlip").disabled = (devices.length < 2);
-
-  tick();
-  log("カメラ切替（OK）", "ok");
-}
-
-// ---------- sampling & reconstruction ----------
-function getLuma(data, idx){
-  const r=data[idx], g=data[idx+1], b=data[idx+2];
-  return (0.2126*r + 0.7152*g + 0.0722*b);
-}
-
-function computeAutoThreshold(imageData){
-  const hist = new Array(256).fill(0);
-  const d = imageData.data;
-  const n = imageData.width * imageData.height;
-  for(let i=0;i<d.length;i+=4){
-    const y = Math.max(0, Math.min(255, Math.round(getLuma(d,i))));
-    hist[y]++;
-  }
-  let sum=0;
-  for(let i=0;i<256;i++) sum += i*hist[i];
-
-  let sumB=0, wB=0, wF=0;
-  let varMax=0, th=128;
-
-  for(let t=0;t<256;t++){
-    wB += hist[t];
-    if(wB===0) continue;
-    wF = n - wB;
-    if(wF===0) break;
-    sumB += t*hist[t];
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-    const varBetween = wB*wF*(mB-mF)*(mB-mF);
-    if(varBetween > varMax){
-      varMax = varBetween;
-      th = t;
-    }
-  }
-  return th;
-}
-
-function sampleIsBlack(img, x, y, th){
-  const w = img.width, h = img.height;
-  const d = img.data;
-  let sum=0, cnt=0;
-  for(let dy=-1; dy<=1; dy++){
-    for(let dx=-1; dx<=1; dx++){
-      const xx = Math.max(0, Math.min(w-1, Math.round(x+dx)));
-      const yy = Math.max(0, Math.min(h-1, Math.round(y+dy)));
-      const idx = (yy*w + xx)*4;
-      sum += getLuma(d, idx);
-      cnt++;
-    }
-  }
-  return (sum/cnt) < th;
-}
-
-function rotate180BoolGrid(grid){
-  const N = grid.length;
-  const out = Array.from({length:N}, ()=>Array(N).fill(false));
-  for(let r=0;r<N;r++){
-    for(let c=0;c<N;c++){
-      out[N-1-r][N-1-c] = grid[r][c];
-    }
-  }
-  return out;
-}
-
-function drawGridToCanvas(canvas, ctx, grid, quiet){
-  const N = grid.length;
-  const cell = 6;
-  const total = (N + quiet*2);
-  canvas.width = total*cell;
-  canvas.height = total*cell;
-
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle="#fff";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle="#000";
-  for(let r=0;r<N;r++){
-    for(let c=0;c<N;c++){
-      if(!grid[r][c]) continue;
-      ctx.fillRect((c+quiet)*cell, (r+quiet)*cell, cell, cell);
-    }
-  }
-}
-
-function reconstructLayersFromCrop(cropImageData, N, quiet){
-  const totalCells = N + quiet*2;
-  const virtualTotal2 = (totalCells*2) + SHIFT2; // half-unit lattice size
-
-  const W = cropImageData.width; // square
-  const scale = W / virtualTotal2; // px per half-unit
-
-  const thMode = $("thMode").value;
-  const th = (thMode === "auto") ? computeAutoThreshold(cropImageData)
-                                 : Math.max(0, Math.min(255, parseInt($("thFixed").value,10)||128));
-
-  const g1 = Array.from({length:N}, ()=>Array(N).fill(false));
-  const g2rot = Array.from({length:N}, ()=>Array(N).fill(false));
-
-  for(let r=0;r<N;r++){
-    for(let c=0;c<N;c++){
-      // Layer1 center half-units
-      const x1 = (((c + quiet)*2 + 1) * scale);
-      const y1 = (((r + quiet)*2 + 1) * scale);
-      g1[r][c] = sampleIsBlack(cropImageData, x1, y1, th);
-
-      // Layer2 rotated sampled at shifted lattice
-      const x2 = (((c + quiet)*2 + SHIFT2 + 1) * scale);
-      const y2 = (((r + quiet)*2 + SHIFT2 + 1) * scale);
-      g2rot[r][c] = sampleIsBlack(cropImageData, x2, y2, th);
-    }
-  }
-
-  const g2 = rotate180BoolGrid(g2rot);
-  return { g1, g2, threshold: th };
-}
-function reconstructOneLayerFromCrop(cropImageData, N, quiet, whichLayer /*1 or 2*/, th){
-  const totalCells = N + quiet*2;
-  const virtualTotal2 = (totalCells*2) + SHIFT2; // half-unit lattice size
-
-  const W = cropImageData.width; // square
-  const scale = W / virtualTotal2; // px per half-unit
-
-  if(whichLayer === 1){
-    const g = Array.from({length:N}, ()=>Array(N).fill(false));
-    for(let r=0;r<N;r++){
-      for(let c=0;c<N;c++){
-        const x1 = (((c + quiet)*2 + 1) * scale);
-        const y1 = (((r + quiet)*2 + 1) * scale);
-        g[r][c] = sampleIsBlack(cropImageData, x1, y1, th);
-      }
-    }
-    return g;
-  }else{
-    const grot = Array.from({length:N}, ()=>Array(N).fill(false));
-    for(let r=0;r<N;r++){
-      for(let c=0;c<N;c++){
-        const x2 = (((c + quiet)*2 + SHIFT2 + 1) * scale);
-        const y2 = (((r + quiet)*2 + SHIFT2 + 1) * scale);
-        grot[r][c] = sampleIsBlack(cropImageData, x2, y2, th);
-      }
-    }
-    return rotate180BoolGrid(grot);
-  }
-}
-// ---------- Decoder ----------
-let barcodeDetector = null;
-let zxingLoaded = false;
-let zxing = null;
-
-async function initDecoder(){
-  if("BarcodeDetector" in window){
-    try{
-      barcodeDetector = new BarcodeDetector({ formats:["qr_code"] });
-      capPill.textContent = "camera: ready / decoder: BarcodeDetector";
-      log("Decoder: BarcodeDetector", "ok");
-      return;
-    }catch(_){
-      barcodeDetector = null;
-    }
-  }
-  capPill.textContent = "camera: ready / decoder: ZXing (loading...)";
-  await loadZXing();
-}
-
-async function loadZXing(){
-  if(zxingLoaded) return;
-  const src = "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js";
-  await new Promise((resolve, reject)=>{
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = ()=>resolve();
-    s.onerror = ()=>reject(new Error("ZXingのロードに失敗しました（ネット環境確認）"));
-    document.head.appendChild(s);
-  });
-  zxingLoaded = true;
-  zxing = window.ZXingBrowser || window.ZXing || null;
-  capPill.textContent = "camera: ready / decoder: ZXing";
-  log("Decoder: ZXing loaded", "ok");
-}
-
-async function decodeCanvasQR(canvas){
-  if(barcodeDetector){
-    const bmp = await createImageBitmap(canvas);
-    const codes = await barcodeDetector.detect(bmp);
-    if(codes && codes.length) return (codes[0].rawValue || "");
-    return null;
-  }
-
-  await loadZXing();
-  if(!zxing || !zxing.BrowserQRCodeReader) throw new Error("ZXingが利用できません。");
-  const reader = new zxing.BrowserQRCodeReader();
-  try{
-    const res = await reader.decodeFromCanvas(canvas);
-    return res?.getText?.() ? res.getText() : (res?.text || null);
-  }catch(_){
-    return null;
-  }finally{
-    try{ reader.reset(); }catch(_){}
-  }
-}
-
-// ---------- Frame loop ----------
-const workCanvas = document.createElement("canvas");
-const wctx = workCanvas.getContext("2d", { willReadFrequently:true });
-
-let lastHitAt = 0;
-
-  // ----- Sequential decode state -----
-let phase = 1;           // 1: read Layer1, 2: read Layer2, 3: done
-let locked1 = null;
-let locked2 = null;
-
-let lastCandidate = "";
-let stableCount = 0;
-const STABLE_HITS = 2;   // 同じ結果が連続で何回出たら確定するか
-async function tick(){
-  rafId = requestAnimationFrame(tick);
-  if(!stream) return;
-
-  const rect = video.getBoundingClientRect();
-  const ow = Math.floor(rect.width);
-  const oh = Math.floor(rect.height);
-  if(overlay.width !== ow || overlay.height !== oh){
-    overlay.width = ow;
-    overlay.height = oh;
-  }
-
-  const {x,y,side} = drawGuide();
-
-  const now = performance.now();
-  if(busy) return;
-  if(now - lastHitAt < 250) return; // throttling
-
-  busy = true;
-  try{
-    const cropSide = 720;
-    workCanvas.width = cropSide;
-    workCanvas.height = cropSide;
-
-    const vw = video.videoWidth, vh = video.videoHeight;
-    if(!vw || !vh){ busy=false; return; }
-
-    // object-fit: cover mapping
-    const boxW = rect.width, boxH = rect.height;
-    const videoAR = vw / vh;
-    const boxAR = boxW / boxH;
-    let drawW, drawH, offsetX, offsetY;
-    if(videoAR > boxAR){
-      drawH = boxH;
-      drawW = boxH * videoAR;
-      offsetX = (boxW - drawW) / 2;
-      offsetY = 0;
-    }else{
-      drawW = boxW;
-      drawH = boxW / videoAR;
-      offsetX = 0;
-      offsetY = (boxH - drawH) / 2;
-    }
-
-    const rx0 = (x - offsetX) / drawW;
-    const ry0 = (y - offsetY) / drawH;
-    const rx1 = (x + side - offsetX) / drawW;
-    const ry1 = (y + side - offsetY) / drawH;
-
-    const sx = Math.max(0, Math.min(vw, rx0 * vw));
-    const sy = Math.max(0, Math.min(vh, ry0 * vh));
-    const sW = Math.max(1, Math.min(vw - sx, (rx1 - rx0) * vw));
-    const sH = Math.max(1, Math.min(vh - sy, (ry1 - ry0) * vh));
-
-    wctx.drawImage(video, sx, sy, sW, sH, 0, 0, cropSide, cropSide);
-    const crop = wctx.getImageData(0,0,cropSide,cropSide);
-
-    const N = parseInt($("Nsel").value,10) || 25;
-    const quiet = Math.max(0, Math.min(20, parseInt($("quiet").value,10) || 4));
-
-    // threshold
-    const thMode = $("thMode").value;
-    const th = (thMode === "auto") ? computeAutoThreshold(crop)
-                                   : Math.max(0, Math.min(255, parseInt($("thFixed").value,10)||128));
-
-    // ---- Sequential decode ----
-    if(phase === 1){
-      // Layer1 only
-      const g1 = reconstructOneLayerFromCrop(crop, N, quiet, 1, th);
-      drawGridToCanvas(cvL1, l1ctx, g1, quiet);
-
-      // Layer2 debug は空白にしておく（任意）
-      l2ctx.clearRect(0,0,cvL2.width,cvL2.height);
-
-      const t1 = await decodeCanvasQR(cvL1);
-
-      const ok1 = !!t1;
-      setTag($("tag1"), ok1, ok1 ? "READING" : "NG");
-      setOut($("out1"), t1 || (locked1 ?? "-"));
-
-      // Layer2 はまだ未読
-      setTag($("tag2"), false, locked2 ? "OK" : "-");
-      setOut($("out2"), locked2 || "-");
-
-      if(ok1){
-        // 連続同一ヒットで確定
-        if(t1 === lastCandidate) stableCount++;
-        else { lastCandidate = t1; stableCount = 1; }
-
-        lastHitAt = performance.now();
-        log(`phase1 hit: "${t1}" (stable=${stableCount}/${STABLE_HITS}, th=${th})`);
-
-        if(stableCount >= STABLE_HITS){
-          locked1 = t1;
-          phase = 2;
-          stableCount = 0;
-          lastCandidate = "";
-          setTag($("tag1"), true, "OK");
-          setOut($("out1"), locked1);
-          log(`Layer1 確定: "${locked1}" → Layer2 読み取りへ`, "ok");
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    let isProcessing = false;
+    let isScanning = false;
+    
+    // エンジン関連
+    let useNativeDetector = false;
+    let barcodeDetector = null;
+    let zxingMultiReader = null;
+
+    // 検出状態
+    let firstQR = null;
+    let secondQR = null;
+
+    // 初期化とカメラ起動
+    async function init() {
+        // A) BarcodeDetectorが使えるか判定
+        if ('BarcodeDetector' in window) {
+            try {
+                const formats = await BarcodeDetector.getSupportedFormats();
+                if (formats.includes('qr_code')) {
+                    barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+                    useNativeDetector = true;
+                    document.getElementById('detectorInfo').innerText = "⚡ エンジン: BarcodeDetector (Native)";
+                }
+            } catch (e) {
+                console.warn("BarcodeDetectorの初期化に失敗、ZXingにフォールバックします。", e);
+            }
         }
-      }
-      return;
-    }
-
-    if(phase === 2){
-      // Layer2 only
-      const g2 = reconstructOneLayerFromCrop(crop, N, quiet, 2, th);
-      drawGridToCanvas(cvL2, l2ctx, g2, quiet);
-
-      // Layer1 はロック表示
-      setTag($("tag1"), true, "OK");
-      setOut($("out1"), locked1 || "-");
-
-      const t2 = await decodeCanvasQR(cvL2);
-
-      const ok2 = !!t2;
-      setTag($("tag2"), ok2, ok2 ? "READING" : "NG");
-      setOut($("out2"), t2 || (locked2 ?? "-"));
-
-      if(ok2){
-        if(t2 === lastCandidate) stableCount++;
-        else { lastCandidate = t2; stableCount = 1; }
-
-        lastHitAt = performance.now();
-        log(`phase2 hit: "${t2}" (stable=${stableCount}/${STABLE_HITS}, th=${th})`);
-
-        if(stableCount >= STABLE_HITS){
-          locked2 = t2;
-          phase = 3;
-          stableCount = 0;
-          lastCandidate = "";
-          setTag($("tag2"), true, "OK");
-          setOut($("out2"), locked2);
-          log(`Layer2 確定: "${locked2}"（完了）`, "ok");
+        
+        // B) 使えなければ ZXing (QRCodeMultiReader) を初期化
+        if (!useNativeDetector) {
+            zxingMultiReader = new ZXing.qrcode.QRCodeMultiReader();
+            document.getElementById('detectorInfo').innerText = "🐢 エンジン: ZXing (decodeMultiple)";
         }
-      }
-      return;
+
+        startCamera();
     }
 
-    // phase === 3（完了）：表示固定、何もしない
-    setTag($("tag1"), !!locked1, locked1 ? "OK" : "-");
-    setTag($("tag2"), !!locked2, locked2 ? "OK" : "-");
-    setOut($("out1"), locked1 || "-");
-    setOut($("out2"), locked2 || "-");
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+            });
+            video.srcObject = stream;
+            
+            video.addEventListener('loadedmetadata', () => {
+                video.play();
+                // Canvasの解像度をビデオフレームの解像度に合わせる
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                isScanning = true;
+                requestAnimationFrame(scanLoop);
+            });
+        } catch (err) {
+            alert("カメラへのアクセスが拒否されたか、エラーが発生しました: " + err.message);
+        }
+    }
 
-  }catch(e){
-    // デバッグしたいなら有効化
-    // log("tick err: " + (e.message||e), "ng");
-  }finally{
-    busy = false;
-  }
-}
-  
-// ---------- Events ----------
-$("btnStart").addEventListener("click", async ()=>{
-  try{
-    if(!navigator.mediaDevices?.getUserMedia) throw new Error("getUserMediaが利用できません。HTTPSで開いてください。");
-    await startCamera();
-    await initDecoder();
-  }catch(e){
-    log("開始エラー: " + (e.message||e), "ng");
-    alert("開始エラー: " + (e.message||e));
-    stopCamera();
-  }
-});
+    // 幾何計算: 頂点配列から中心座標(cx, cy)を計算
+    function getCenter(points) {
+        if (!points || points.length === 0) return { x: 0, y: 0 };
+        let sumX = 0, sumY = 0;
+        points.forEach(p => { sumX += p.x; sumY += p.y; });
+        return { x: sumX / points.length, y: sumY / points.length };
+    }
 
-$("btnStop").addEventListener("click", ()=>stopCamera());
-$("btnFlip").addEventListener("click", async ()=>{
-  try{ await flipCamera(); }
-  catch(e){ log("切替エラー: " + (e.message||e), "ng"); }
-});
+    // 幾何計算: 2点間の距離
+    function getDistance(p1, p2) {
+        return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
 
-$("thMode").addEventListener("change", ()=>{
-  const isFixed = $("thMode").value === "fixed";
-  $("thFixed").disabled = !isFixed;
-});
-$("thFixed").disabled = true;
+    // スキャンループ
+    async function scanLoop() {
+        if (!isScanning) return;
+
+        // 両方揃ったらスキャン停止
+        if (firstQR && secondQR) {
+            document.getElementById('resetBtn').style.display = 'block';
+            isScanning = false;
+            return;
+        }
+
+        if (!isProcessing && video.readyState === video.HAVE_ENOUGH_DATA) {
+            isProcessing = true;
+            
+            // 映像サイズが変わった場合の追従
+            if (canvas.width !== video.videoWidth) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
+
+            // 解析用に現在のフレームをCanvasに描画
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            let detectedItems = [];
+
+            try {
+                if (useNativeDetector) {
+                    // ----------------------------------------------------
+                    // A) BarcodeDetector アプローチ
+                    // ----------------------------------------------------
+                    const barcodes = await barcodeDetector.detect(canvas);
+                    detectedItems = barcodes.map(b => ({
+                        text: b.rawValue,
+                        points: b.cornerPoints,
+                        center: getCenter(b.cornerPoints)
+                    }));
+                } else {
+                    // ----------------------------------------------------
+                    // B) ZXing アプローチ (複数検出)
+                    // ----------------------------------------------------
+                    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+                    const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
+                    const hints = new Map();
+                    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
+                    
+                    const results = zxingMultiReader.decodeMultiple(binaryBitmap, hints);
+                    detectedItems = results.map(r => {
+                        const pts = r.getResultPoints().map(p => ({ x: p.getX(), y: p.getY() }));
+                        return {
+                            text: r.getText(),
+                            points: pts,
+                            center: getCenter(pts)
+                        };
+                    });
+                }
+            } catch (err) {
+                // ZXingはQRが見つからないと NotFoundException を投げるため握りつぶす
+            }
+
+            // 検出結果の幾何判定
+            processDetections(detectedItems);
+            
+            // 枠線を再描画
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (firstQR) drawBoundingBox(firstQR.points, '#00E676');
+            if (secondQR) drawBoundingBox(secondQR.points, '#29B6F6');
+
+            isProcessing = false;
+        }
+
+        // 次のフレームへ
+        requestAnimationFrame(scanLoop);
+    }
+
+    // 「同一か、別物か」を判定するコアロジック
+    function processDetections(items) {
+        if (items.length === 0) return;
+        
+        // 判定閾値: フレーム幅の25%以上離れていれば「別QR」とみなす
+        const distanceThreshold = canvas.width * 0.25;
+
+        for (const item of items) {
+            if (!firstQR) {
+                // 1個目を採用
+                firstQR = item;
+                document.getElementById('text1').innerText = item.text;
+                continue;
+            }
+
+            if (!secondQR) {
+                // すでに1個目がある場合、中心距離を測る
+                const dist = getDistance(firstQR.center, item.center);
+                
+                if (dist > distanceThreshold) {
+                    // 【判定】中心距離が閾値より大きい ＝「別のコード」として採用
+                    secondQR = item;
+                    document.getElementById('text2').innerText = item.text;
+                    break; 
+                } else {
+                    // 【判定】距離が近い ＝ 1個目と同じQRを見続けている
+                    // 位置情報を最新に更新して枠線がブレに追従するようにする
+                    firstQR.points = item.points;
+                    firstQR.center = item.center;
+                }
+            }
+        }
+    }
+
+    // キャンバスにQRの枠を描画する関数
+    function drawBoundingBox(points, color) {
+        if (!points || points.length < 3) return;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        
+        // 背景を少し暗くして視認性を上げる
+        ctx.fillStyle = color + '33'; // hexに透過アルファを追加
+        ctx.fill();
+    }
+
+    // リセット処理
+    function resetScanner() {
+        firstQR = null;
+        secondQR = null;
+        document.getElementById('text1').innerText = "未検出";
+        document.getElementById('text2').innerText = "未検出";
+        document.getElementById('resetBtn').style.display = 'none';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        isScanning = true;
+        requestAnimationFrame(scanLoop);
+    }
+
+    // 起動
+    window.onload = init;
+
 </script>
 </body>
 </html>
-
-
-
