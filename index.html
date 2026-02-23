@@ -11,27 +11,34 @@
             margin: 0; padding: 0; background-color: #121212; color: #ffffff; text-align: center;
         }
         h2 { margin: 15px 0; font-size: 1.2rem; }
-        #startScreen { padding: 20px; margin-top: 50px; }
+        
+        /* 各画面のコンテナ */
+        #startScreen, #resultScreen { padding: 20px; margin-top: 50px; }
+        #resultScreen { display: none; } /* 初期状態は非表示 */
+
         .camera-container {
             position: relative; width: 100%; max-width: 600px; margin: 0 auto; background: #000; display: none;
         }
         video { width: 100%; display: block; object-fit: cover; }
-        /* キャンバスは枠線描画専用。透明にしてビデオの上に被せる */
         canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        
         .status-panel {
             padding: 15px; background: #1e1e1e; border-top: 1px solid #333; text-align: left; max-width: 600px; margin: 0 auto; display: none;
         }
+        
         .qr-result { margin-bottom: 10px; padding: 10px; border-radius: 8px; background: #2c2c2c; word-break: break-all; }
         .qr-1 { border-left: 5px solid #00E676; }
         .qr-2 { border-left: 5px solid #29B6F6; }
+        
         button {
             width: 100%; max-width: 300px; padding: 15px; font-size: 1.1rem; font-weight: bold; 
             background: #6200EE; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px;
         }
         button:active { background: #3700B3; }
         button:disabled { background: #555; cursor: not-allowed; }
-        #resetBtn { display: none; max-width: 100%; background: #03DAC6; color: #000; }
-        #resetBtn:active { background: #018786; }
+        
+        #backBtn { background: #03DAC6; color: #000; margin-top: 30px; }
+        #backBtn:active { background: #018786; }
     </style>
 </head>
 <body>
@@ -52,13 +59,23 @@
 
     <div class="status-panel" id="statusPanel">
         <div id="detectorInfo" style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">読取エンジン準備中...</div>
-        <div id="result1" class="qr-result qr-1">
+        <div class="qr-result qr-1">
             <strong>1個目:</strong> <span id="text1">未検出</span>
         </div>
-        <div id="result2" class="qr-result qr-2">
+        <div class="qr-result qr-2">
             <strong>2個目:</strong> <span id="text2">未検出</span>
         </div>
-        <button id="resetBtn" onclick="resetScanner()">🔄 もう一度スキャンする</button>
+    </div>
+
+    <div id="resultScreen">
+        <h3 style="color: #00E676; margin-bottom: 20px;">✅ 読み取り完了！</h3>
+        <div class="qr-result qr-1" style="text-align: left;">
+            <strong>1個目:</strong><br> <span id="finalText1"></span>
+        </div>
+        <div class="qr-result qr-2" style="text-align: left;">
+            <strong>2個目:</strong><br> <span id="finalText2"></span>
+        </div>
+        <button id="backBtn" onclick="goBack()">🔙 もとのカメラ画面に戻る</button>
     </div>
 
 <script>
@@ -183,7 +200,6 @@
 
             try {
                 if (useNativeDetector) {
-                    // キャンバスではなくビデオを直接渡す！劇的に速くなります
                     const barcodes = await barcodeDetector.detect(video);
                     detectedItems = barcodes.map(b => ({
                         text: b.rawValue,
@@ -191,7 +207,6 @@
                         center: getCenter(b.cornerPoints)
                     }));
                 } else if (zxingMultiReader) {
-                    // ZXing用に見えないキャンバスへ転写して解析
                     zxingCanvas.width = overlayCanvas.width;
                     zxingCanvas.height = overlayCanvas.height;
                     zxingCtx.drawImage(video, 0, 0, zxingCanvas.width, zxingCanvas.height);
@@ -213,20 +228,20 @@
             isProcessing = false;
         }
 
+        // ▼変更点：2つ揃ったら結果画面へ遷移する処理
         if (firstQR && secondQR) {
-            document.getElementById('resetBtn').style.display = 'block';
-            isScanning = false; // 2つ揃ったら停止
+            showResultScreen();
+            isScanning = false; // 2つ揃ったらスキャン停止
             return;
         }
 
         requestAnimationFrame(scanLoop);
     }
 
-    // コアロジック：ブレと同一QRの判定
+    // コアロジック：ブレと同一QRの判定 (一切変更なし)
     function processDetections(items) {
         if (items.length === 0) return;
 
-        // 同じフレームに2つQRが映っている場合は最優先でツインとして採用
         if (items.length >= 2) {
             if (!firstQR) {
                 firstQR = items[0];
@@ -235,22 +250,20 @@
                 return;
             }
             if (firstQR && !secondQR) {
-                // 1つ目と違うほうを2つ目に採用
                 const dist0 = getDistance(firstQR.center, items[0].center);
                 const dist1 = getDistance(firstQR.center, items[1].center);
                 if (dist0 > dist1) {
                     secondQR = items[0];
-                    firstQR = items[1]; // 位置更新
+                    firstQR = items[1]; 
                 } else {
                     secondQR = items[1];
-                    firstQR = items[0]; // 位置更新
+                    firstQR = items[0]; 
                 }
                 updateUI();
                 return;
             }
         }
 
-        // 1つだけ映っている場合
         if (items.length === 1) {
             const item = items[0];
             
@@ -258,21 +271,17 @@
                 firstQR = item;
                 updateUI();
             } else if (!secondQR) {
-                // テキストが違うなら、問答無用で別QR(2個目)として扱う
                 if (item.text !== firstQR.text) {
                     secondQR = item;
                     updateUI();
                 } else {
-                    // テキストが同じ場合、カメラのブレか、本物のツインかを距離で判定
                     const dist = getDistance(firstQR.center, item.center);
-                    const distanceThreshold = overlayCanvas.width * 0.35; // 閾値を35%に引き上げ
+                    const distanceThreshold = overlayCanvas.width * 0.35; 
 
                     if (dist > distanceThreshold) {
-                        // 画面幅の35%以上大きく動いた場合は2つ目とみなす
                         secondQR = item;
                         updateUI();
                     } else {
-                        // 距離が近い場合は「同じQRを見続けているだけ（ブレ）」とみなし、位置だけ更新
                         firstQR.points = item.points;
                         firstQR.center = item.center;
                     }
@@ -281,9 +290,43 @@
         }
     }
 
+    // カメラ画面下の経過UIを更新
     function updateUI() {
         if (firstQR) document.getElementById('text1').innerText = firstQR.text;
         if (secondQR) document.getElementById('text2').innerText = secondQR.text;
+    }
+
+    // 結果画面への遷移処理
+    function showResultScreen() {
+        // カメラとステータスを隠し、結果画面を表示
+        document.getElementById('cameraContainer').style.display = 'none';
+        document.getElementById('statusPanel').style.display = 'none';
+        document.getElementById('resultScreen').style.display = 'block';
+        
+        // 最終結果をテキストにセット
+        document.getElementById('finalText1').innerText = firstQR.text;
+        document.getElementById('finalText2').innerText = secondQR.text;
+    }
+
+    // 戻る（再スキャン）処理
+    function goBack() {
+        // データをリセット
+        firstQR = null;
+        secondQR = null;
+        
+        // UIテキストをリセット
+        document.getElementById('text1').innerText = "未検出";
+        document.getElementById('text2').innerText = "未検出";
+        
+        // 画面をカメラ状態に戻す
+        document.getElementById('resultScreen').style.display = 'none';
+        document.getElementById('cameraContainer').style.display = 'block';
+        document.getElementById('statusPanel').style.display = 'block';
+        
+        // スキャン再開
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        isScanning = true;
+        requestAnimationFrame(scanLoop);
     }
 
     function drawBoundingBox(points, color) {
@@ -297,19 +340,8 @@
         ctx.lineWidth = 6;
         ctx.strokeStyle = color;
         ctx.stroke();
-        ctx.fillStyle = color + '44'; // 半透明
+        ctx.fillStyle = color + '44'; 
         ctx.fill();
-    }
-
-    function resetScanner() {
-        firstQR = null;
-        secondQR = null;
-        document.getElementById('text1').innerText = "未検出";
-        document.getElementById('text2').innerText = "未検出";
-        document.getElementById('resetBtn').style.display = 'none';
-        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        isScanning = true;
-        requestAnimationFrame(scanLoop);
     }
 </script>
 </body>
