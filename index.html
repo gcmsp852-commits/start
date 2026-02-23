@@ -3,166 +3,629 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Simple QR Reader</title>
+  <title>QR Twin Reader (Layer1/Layer2)</title>
   <style>
-    body{margin:0;font-family:system-ui;background:#0f111a;color:#e8eef7}
-    header{padding:12px 14px;background:#171a26;border-bottom:1px solid #2a3348}
-    main{padding:14px;display:grid;gap:12px;max-width:900px;margin:0 auto}
-    .panel{background:#171a26;border:1px solid #2a3348;border-radius:12px;padding:12px}
-    button{width:100%;padding:12px;border-radius:10px;border:1px solid #2a3348;background:#0c0f18;color:#e8eef7;font-weight:700;cursor:pointer}
-    button.primary{
-  border-color:#ff4d4d;
-  background:linear-gradient(135deg,#ff4d4d,#b91c1c);
-  color:#ffffff;
-}
-    button:disabled{opacity:.5;cursor:not-allowed}
-    .camwrap{position:relative;border-radius:12px;overflow:hidden;border:1px solid #2a3348;background:#000;aspect-ratio:3/4}
-    video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-    pre{white-space:pre-wrap;word-break:break-word;margin:0}
-    .muted{color:#9fb0c7;font-size:12px;line-height:1.4}
+    :root{
+      --bg:#0f111a; --panel:#171a26; --ink:#e8eef7; --muted:#9fb0c7;
+      --accent:#00f2ff; --accent2:#ff0055; --border:#2a3348; --ok:#2dd4bf; --bad:#ff4d4d;
+    }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--ink); }
+    header{
+      position:sticky; top:0; z-index:10;
+      padding:12px 14px;
+      background:rgba(23,26,38,.92); border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    header h1{ margin:0; font-size:14px; letter-spacing:.02em; color:var(--accent); }
+    .pill{ font-size:11px; color:var(--muted); border:1px solid var(--border); padding:4px 8px; border-radius:999px; background:#0c0f18; }
+    main{ max-width:980px; margin:0 auto; padding:14px; display:grid; gap:12px; }
+    .panel{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
+    .row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media (max-width:720px){ .row{ grid-template-columns:1fr; } }
+    label{ display:block; font-size:11px; color:var(--muted); margin:6px 0 4px; }
+    input, select, button{
+      width:100%;
+      border:1px solid var(--border); border-radius:10px;
+      padding:10px 10px;
+      background:#0c0f18; color:var(--ink);
+      font-size:12px;
+    }
+    button{ cursor:pointer; font-weight:800; transition:.15s; }
+    button.primary{ border-color:var(--bad); background:linear-gradient(135deg,var(--bad),#b91c1c); color:#fff; }
+    button.secondary{ border-color:#4b5a78; }
+    button:disabled{ opacity:.45; cursor:not-allowed; }
+    .btnrow{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    @media (max-width:720px){ .btnrow{ grid-template-columns:1fr; } }
+
+    .camwrap{
+      position:relative;
+      border-radius:12px;
+      overflow:hidden;
+      border:1px solid var(--border);
+      background:#000;
+      aspect-ratio: 3 / 4;
+    }
+    video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+    canvas#overlay{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+
+    .hint{
+      position:absolute; left:12px; right:12px; bottom:12px;
+      background:rgba(15,17,26,.75);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:12px;
+      padding:10px;
+      font-size:12px; color:var(--muted);
+      backdrop-filter: blur(6px);
+    }
+    .hint b{ color:var(--ink); }
+
+    .kpi{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    @media (max-width:720px){ .kpi{ grid-template-columns:1fr; } }
+
+    .result{ border:1px solid var(--border); border-radius:12px; padding:10px; background:#0c0f18; }
+    .result h3{ margin:0 0 6px 0; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; }
+    .tag{ font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+    .tag.ok{ border-color:rgba(45,212,191,.45); color:var(--ok); }
+    .tag.ng{ border-color:rgba(255,77,77,.45); color:var(--bad); }
+    pre{ margin:0; white-space:pre-wrap; word-break:break-word; font-family:ui-monospace, Menlo, Consolas, monospace; font-size:12px; line-height:1.35; }
+
+    .minirow{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    .minirow canvas{ width:100%; height:auto; background:#fff; border-radius:10px; border:1px solid var(--border); }
+
+    .log{ font-size:11px; color:var(--muted); max-height:140px; overflow:auto; border:1px solid var(--border); border-radius:12px; padding:10px; background:#0c0f18; }
+    .log .ok{ color:var(--ok); }
+    .log .ng{ color:var(--bad); }
+    .small{ font-size:11px; color:var(--muted); line-height:1.35; }
+    .small code{ color:var(--ink); }
   </style>
 </head>
 <body>
 <header>
-  <div><b>Simple QR Reader</b></div>
-  <div class="muted" id="status">status: idle</div>
+  <h1>QR Twin Reader（重ね合わせ1枚 → Layer1/Layer2）</h1>
+  <div class="pill" id="capPill">camera: - / decoder: -</div>
 </header>
 
 <main>
   <div class="panel">
-    <button class="primary" id="btnStart">📷 カメラ開始</button>
-    <button id="btnStop" disabled>⏹ 停止</button>
-    <div class="muted" style="margin-top:10px">
-      ※スマホは <b>HTTPS</b> で開いてください（file:// だとカメラ不可）<br>
-      ※まずは「普通のQRコード」を読めるところまで確認します
+    <div class="row">
+      <div>
+        <label>想定バージョン（モジュール数）</label>
+        <select id="Nsel">
+          <option value="25" selected>Ver2（25×25）</option>
+          <option value="21">Ver1（21×21）</option>
+          <option value="29">Ver3（29×29）</option>
+          <option value="33">Ver4（33×33）</option>
+          <option value="37">Ver5（37×37）</option>
+          <option value="41">Ver6（41×41）</option>
+        </select>
+        <div class="small">※生成側と一致必須（基本Ver2運用ならそのまま）</div>
+      </div>
+      <div>
+        <label>Quiet Zone（生成側と同じ）</label>
+        <input id="quiet" type="number" value="4" min="0" max="20" step="1">
+        <div class="small">※Quietがズレると復元が崩れます</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>クロップ倍率（枠内にツインを大きく入れる）</label>
+        <input id="cropScale" type="range" min="0.55" max="0.95" step="0.01" value="0.78">
+        <div class="small">枠内にツインQRが“なるべく大きく”入るよう調整（認識率UP）</div>
+      </div>
+      <div>
+        <label>二値化しきい値</label>
+        <select id="thMode">
+          <option value="auto" selected>auto（推奨）</option>
+          <option value="fixed">fixed（手動）</option>
+        </select>
+        <label style="margin-top:8px;">固定しきい値（fixed時のみ）</label>
+        <input id="thFixed" type="number" value="128" min="0" max="255" step="1">
+      </div>
+    </div>
+
+    <div class="btnrow" style="margin-top:10px;">
+      <button class="primary" id="btnStart">📷 カメラ開始</button>
+      <button class="secondary" id="btnStop" disabled>⏹ 停止</button>
+      <button class="secondary" id="btnFlip" disabled>🔁 カメラ切替</button>
+    </div>
+
+    <div class="small" style="margin-top:10px;">
+      <b>重要：</b>スマホは <code>https</code> で開いてください（<code>file://</code> だとカメラ不可）<br>
+      <b>この段階は：</b>PWA/ServiceWorkerは使いません（キャッシュ問題を潰すため）
     </div>
   </div>
 
   <div class="panel">
     <div class="camwrap">
       <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="hint">
+        枠の中に <b>QRツイン（重ね合わせ1枚）</b> を入れてください。<br>
+        成功すると <b>Layer1 / Layer2</b> が表示されます。
+      </div>
     </div>
   </div>
 
   <div class="panel">
-    <div class="muted">読み取り結果</div>
-    <pre id="out">-</pre>
+    <div class="kpi">
+      <div class="result">
+        <h3>Layer1 <span class="tag" id="tag1">-</span></h3>
+        <pre id="out1">-</pre>
+      </div>
+      <div class="result">
+        <h3>Layer2 <span class="tag" id="tag2">-</span></h3>
+        <pre id="out2">-</pre>
+      </div>
+    </div>
+
+    <div class="minirow">
+      <div>
+        <label>復元した Layer1 QR（デバッグ）</label>
+        <canvas id="cvL1"></canvas>
+      </div>
+      <div>
+        <label>復元した Layer2 QR（デバッグ）</label>
+        <canvas id="cvL2"></canvas>
+      </div>
+    </div>
+
+    <label style="margin-top:12px;">ログ</label>
+    <div class="log" id="log"></div>
   </div>
 </main>
 
 <script>
 const $ = (id)=>document.getElementById(id);
+
 const video = $("video");
-const out = $("out");
-const statusEl = $("status");
+const overlay = $("overlay");
+const octx = overlay.getContext("2d");
+
+const cvL1 = $("cvL1");
+const cvL2 = $("cvL2");
+const l1ctx = cvL1.getContext("2d");
+const l2ctx = cvL2.getContext("2d");
+
+const logEl = $("log");
+const capPill = $("capPill");
+
 let stream = null;
+let devices = [];
+let deviceIndex = 0;
 let rafId = null;
+let busy = false;
 
-// BarcodeDetector が使える端末はそれが最も簡単
-let detector = null;
+// ★あなたのツイン仕様（Layer2は 8.5セル シフト）に合わせる
+const SHIFT_CELLS = 8.5;
+const SHIFT2 = SHIFT_CELLS * 2; // half-unit換算（=17）
 
-function setStatus(s){ statusEl.textContent = "status: " + s; }
+function log(msg, cls=""){
+  const div = document.createElement("div");
+  if(cls) div.className = cls;
+  div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(div);
+}
+
+function setTag(tagEl, ok, text){
+  tagEl.className = "tag " + (ok ? "ok" : "ng");
+  tagEl.textContent = text;
+}
+
+function setOut(outEl, text){
+  outEl.textContent = text ?? "-";
+}
+
+function drawGuide(){
+  const w = overlay.width, h = overlay.height;
+  octx.clearRect(0,0,w,h);
+
+  const s = parseFloat($("cropScale").value);
+  const side = Math.floor(Math.min(w,h) * s);
+  const x = Math.floor((w - side)/2);
+  const y = Math.floor((h - side)/2);
+
+  octx.fillStyle = "rgba(0,0,0,.35)";
+  octx.fillRect(0,0,w,h);
+  octx.clearRect(x,y,side,side);
+
+  octx.strokeStyle = "rgba(255,77,77,.9)";
+  octx.lineWidth = 3;
+  octx.strokeRect(x+1.5, y+1.5, side-3, side-3);
+
+  return {x,y,side};
+}
+
+// ---------- Camera ----------
+async function listCameras(){
+  const all = await navigator.mediaDevices.enumerateDevices();
+  devices = all.filter(d => d.kind === "videoinput");
+  if(!devices.length) throw new Error("カメラが見つかりません。");
+}
 
 async function startCamera(){
-  if(!navigator.mediaDevices?.getUserMedia){
-    throw new Error("getUserMediaが利用できません。HTTPSで開いてください。");
-  }
-
-  // 既存ストリームがあれば停止
   stopCamera();
 
-  // 背面カメラ優先
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio:false,
-    video:{
-      facingMode:{ ideal:"environment" }
+  const tryList = [
+    { audio:false, video:{ facingMode:{ ideal:"environment" }, width:{ideal:1280}, height:{ideal:720} } },
+    { audio:false, video:{ facingMode:{ ideal:"environment" } } },
+    async ()=>{
+      await listCameras();
+      const id = devices[deviceIndex]?.deviceId;
+      if(!id) throw new Error("deviceId が取得できません。");
+      return { audio:false, video:{ deviceId:{ exact:id } } };
     }
-  });
+  ];
 
-  video.srcObject = stream;
+  let lastErr = null;
 
-  await new Promise((resolve)=>{
-    video.onloadedmetadata = ()=>resolve();
-    setTimeout(resolve, 800);
-  });
+  for(const item of tryList){
+    try{
+      const constraints = (typeof item === "function") ? await item() : item;
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
 
-  await video.play();
+      video.srcObject = stream;
+      video.setAttribute("playsinline", "");
+      video.muted = true;
+
+      await new Promise((resolve)=>{
+        const t = setTimeout(resolve, 800);
+        video.onloadedmetadata = ()=>{ clearTimeout(t); resolve(); };
+      });
+
+      await video.play();
+      try{ await listCameras(); }catch(_){}
+
+      $("btnStart").disabled = true;
+      $("btnStop").disabled = false;
+      $("btnFlip").disabled = (devices.length < 2);
+
+      tick();
+      log("カメラ開始（OK）", "ok");
+      return;
+
+    }catch(e){
+      lastErr = e;
+    }
+  }
+
+  throw new Error("カメラ起動に失敗しました: " + (lastErr?.message || lastErr));
 }
 
 function stopCamera(){
   if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
   if(stream){
-    stream.getTracks().forEach(t=>t.stop());
+    try{ stream.getTracks().forEach(t=>t.stop()); }catch(_){}
     stream = null;
   }
   video.srcObject = null;
-  setStatus("idle");
+
+  $("btnStart").disabled = false;
+  $("btnStop").disabled = true;
+  $("btnFlip").disabled = true;
 }
 
-function getFrameCanvas(){
-  const c = document.createElement("canvas");
-  const vw = video.videoWidth, vh = video.videoHeight;
-  c.width = vw; c.height = vh;
-  const ctx = c.getContext("2d");
-  ctx.drawImage(video, 0, 0, vw, vh);
-  return c;
+async function flipCamera(){
+  await listCameras();
+  deviceIndex = (deviceIndex + 1) % devices.length;
+
+  stopCamera();
+
+  const id = devices[deviceIndex]?.deviceId;
+  if(!id) throw new Error("deviceId が取得できません。");
+
+  stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ deviceId:{ exact:id } } });
+
+  video.srcObject = stream;
+  video.setAttribute("playsinline", "");
+  video.muted = true;
+
+  await new Promise((resolve)=>{
+    const t = setTimeout(resolve, 800);
+    video.onloadedmetadata = ()=>{ clearTimeout(t); resolve(); };
+  });
+
+  await video.play();
+
+  $("btnStart").disabled = true;
+  $("btnStop").disabled = false;
+  $("btnFlip").disabled = (devices.length < 2);
+
+  tick();
+  log("カメラ切替（OK）", "ok");
 }
 
-async function tick(){
-  rafId = requestAnimationFrame(tick);
-  if(!stream || !detector) return;
+// ---------- sampling & reconstruction ----------
+function getLuma(data, idx){
+  const r=data[idx], g=data[idx+1], b=data[idx+2];
+  return (0.2126*r + 0.7152*g + 0.0722*b);
+}
 
-  // 端末負荷軽減：毎フレームやらずに間引き
-  // （ここは必要なら調整）
-  const canvas = getFrameCanvas();
-  const bmp = await createImageBitmap(canvas);
+function computeAutoThreshold(imageData){
+  const hist = new Array(256).fill(0);
+  const d = imageData.data;
+  const n = imageData.width * imageData.height;
+  for(let i=0;i<d.length;i+=4){
+    const y = Math.max(0, Math.min(255, Math.round(getLuma(d,i))));
+    hist[y]++;
+  }
+  let sum=0;
+  for(let i=0;i<256;i++) sum += i*hist[i];
 
-  try{
-    const codes = await detector.detect(bmp);
-    if(codes && codes.length){
-      const text = codes[0].rawValue || "";
-      out.textContent = text || "(empty)";
-      setStatus("decoded");
-    }else{
-      setStatus("running");
+  let sumB=0, wB=0, wF=0;
+  let varMax=0, th=128;
+
+  for(let t=0;t<256;t++){
+    wB += hist[t];
+    if(wB===0) continue;
+    wF = n - wB;
+    if(wF===0) break;
+    sumB += t*hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const varBetween = wB*wF*(mB-mF)*(mB-mF);
+    if(varBetween > varMax){
+      varMax = varBetween;
+      th = t;
     }
-  }catch(e){
-    // たまに失敗する端末があるので握りつぶす
-    setStatus("running");
+  }
+  return th;
+}
+
+function sampleIsBlack(img, x, y, th){
+  const w = img.width, h = img.height;
+  const d = img.data;
+  let sum=0, cnt=0;
+  for(let dy=-1; dy<=1; dy++){
+    for(let dx=-1; dx<=1; dx++){
+      const xx = Math.max(0, Math.min(w-1, Math.round(x+dx)));
+      const yy = Math.max(0, Math.min(h-1, Math.round(y+dy)));
+      const idx = (yy*w + xx)*4;
+      sum += getLuma(d, idx);
+      cnt++;
+    }
+  }
+  return (sum/cnt) < th;
+}
+
+function rotate180BoolGrid(grid){
+  const N = grid.length;
+  const out = Array.from({length:N}, ()=>Array(N).fill(false));
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      out[N-1-r][N-1-c] = grid[r][c];
+    }
+  }
+  return out;
+}
+
+function drawGridToCanvas(canvas, ctx, grid, quiet){
+  const N = grid.length;
+  const cell = 6;
+  const total = (N + quiet*2);
+  canvas.width = total*cell;
+  canvas.height = total*cell;
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#000";
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      if(!grid[r][c]) continue;
+      ctx.fillRect((c+quiet)*cell, (r+quiet)*cell, cell, cell);
+    }
   }
 }
 
-$("btnStart").addEventListener("click", async ()=>{
-  try{
-    out.textContent = "-";
-    setStatus("starting...");
+function reconstructLayersFromCrop(cropImageData, N, quiet){
+  const totalCells = N + quiet*2;
+  const virtualTotal2 = (totalCells*2) + SHIFT2; // half-unit lattice size
 
-    // BarcodeDetector初期化
-    if("BarcodeDetector" in window){
-      detector = new BarcodeDetector({ formats:["qr_code"] });
+  const W = cropImageData.width; // square
+  const scale = W / virtualTotal2; // px per half-unit
+
+  const thMode = $("thMode").value;
+  const th = (thMode === "auto") ? computeAutoThreshold(cropImageData)
+                                 : Math.max(0, Math.min(255, parseInt($("thFixed").value,10)||128));
+
+  const g1 = Array.from({length:N}, ()=>Array(N).fill(false));
+  const g2rot = Array.from({length:N}, ()=>Array(N).fill(false));
+
+  for(let r=0;r<N;r++){
+    for(let c=0;c<N;c++){
+      // Layer1 center half-units
+      const x1 = (((c + quiet)*2 + 1) * scale);
+      const y1 = (((r + quiet)*2 + 1) * scale);
+      g1[r][c] = sampleIsBlack(cropImageData, x1, y1, th);
+
+      // Layer2 rotated sampled at shifted lattice
+      const x2 = (((c + quiet)*2 + SHIFT2 + 1) * scale);
+      const y2 = (((r + quiet)*2 + SHIFT2 + 1) * scale);
+      g2rot[r][c] = sampleIsBlack(cropImageData, x2, y2, th);
+    }
+  }
+
+  const g2 = rotate180BoolGrid(g2rot);
+  return { g1, g2, threshold: th };
+}
+
+// ---------- Decoder ----------
+let barcodeDetector = null;
+let zxingLoaded = false;
+let zxing = null;
+
+async function initDecoder(){
+  if("BarcodeDetector" in window){
+    try{
+      barcodeDetector = new BarcodeDetector({ formats:["qr_code"] });
+      capPill.textContent = "camera: ready / decoder: BarcodeDetector";
+      log("Decoder: BarcodeDetector", "ok");
+      return;
+    }catch(_){
+      barcodeDetector = null;
+    }
+  }
+  capPill.textContent = "camera: ready / decoder: ZXing (loading...)";
+  await loadZXing();
+}
+
+async function loadZXing(){
+  if(zxingLoaded) return;
+  const src = "https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/index.min.js";
+  await new Promise((resolve, reject)=>{
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = ()=>resolve();
+    s.onerror = ()=>reject(new Error("ZXingのロードに失敗しました（ネット環境確認）"));
+    document.head.appendChild(s);
+  });
+  zxingLoaded = true;
+  zxing = window.ZXingBrowser || window.ZXing || null;
+  capPill.textContent = "camera: ready / decoder: ZXing";
+  log("Decoder: ZXing loaded", "ok");
+}
+
+async function decodeCanvasQR(canvas){
+  if(barcodeDetector){
+    const bmp = await createImageBitmap(canvas);
+    const codes = await barcodeDetector.detect(bmp);
+    if(codes && codes.length) return (codes[0].rawValue || "");
+    return null;
+  }
+
+  await loadZXing();
+  if(!zxing || !zxing.BrowserQRCodeReader) throw new Error("ZXingが利用できません。");
+  const reader = new zxing.BrowserQRCodeReader();
+  try{
+    const res = await reader.decodeFromCanvas(canvas);
+    return res?.getText?.() ? res.getText() : (res?.text || null);
+  }catch(_){
+    return null;
+  }finally{
+    try{ reader.reset(); }catch(_){}
+  }
+}
+
+// ---------- Frame loop ----------
+const workCanvas = document.createElement("canvas");
+const wctx = workCanvas.getContext("2d", { willReadFrequently:true });
+
+let lastHitAt = 0;
+
+async function tick(){
+  rafId = requestAnimationFrame(tick);
+  if(!stream) return;
+
+  const rect = video.getBoundingClientRect();
+  const ow = Math.floor(rect.width);
+  const oh = Math.floor(rect.height);
+  if(overlay.width !== ow || overlay.height !== oh){
+    overlay.width = ow;
+    overlay.height = oh;
+  }
+
+  const {x,y,side} = drawGuide();
+
+  const now = performance.now();
+  if(busy) return;
+  if(now - lastHitAt < 250) return; // throttling
+
+  busy = true;
+  try{
+    const cropSide = 720;
+    workCanvas.width = cropSide;
+    workCanvas.height = cropSide;
+
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if(!vw || !vh){ busy=false; return; }
+
+    // object-fit: cover mapping
+    const boxW = rect.width, boxH = rect.height;
+    const videoAR = vw / vh;
+    const boxAR = boxW / boxH;
+    let drawW, drawH, offsetX, offsetY;
+    if(videoAR > boxAR){
+      drawH = boxH;
+      drawW = boxH * videoAR;
+      offsetX = (boxW - drawW) / 2;
+      offsetY = 0;
     }else{
-      detector = null;
-      throw new Error("この端末はBarcodeDetector非対応です。次ステップでZXing版にします。");
+      drawW = boxW;
+      drawH = boxW / videoAR;
+      offsetX = 0;
+      offsetY = (boxH - drawH) / 2;
     }
 
-    await startCamera();
+    const rx0 = (x - offsetX) / drawW;
+    const ry0 = (y - offsetY) / drawH;
+    const rx1 = (x + side - offsetX) / drawW;
+    const ry1 = (y + side - offsetY) / drawH;
 
-    $("btnStart").disabled = true;
-    $("btnStop").disabled = false;
+    const sx = Math.max(0, Math.min(vw, rx0 * vw));
+    const sy = Math.max(0, Math.min(vh, ry0 * vh));
+    const sW = Math.max(1, Math.min(vw - sx, (rx1 - rx0) * vw));
+    const sH = Math.max(1, Math.min(vh - sy, (ry1 - ry0) * vh));
 
-    tick();
+    wctx.drawImage(video, sx, sy, sW, sH, 0, 0, cropSide, cropSide);
+    const crop = wctx.getImageData(0,0,cropSide,cropSide);
+
+    const N = parseInt($("Nsel").value,10) || 25;
+    const quiet = Math.max(0, Math.min(20, parseInt($("quiet").value,10) || 4));
+
+    const {g1, g2, threshold} = reconstructLayersFromCrop(crop, N, quiet);
+
+    drawGridToCanvas(cvL1, l1ctx, g1, quiet);
+    drawGridToCanvas(cvL2, l2ctx, g2, quiet);
+
+    const [t1, t2] = await Promise.all([decodeCanvasQR(cvL1), decodeCanvasQR(cvL2)]);
+
+    const ok1 = !!t1;
+    const ok2 = !!t2;
+
+    setTag($("tag1"), ok1, ok1 ? "OK" : "NG");
+    setTag($("tag2"), ok2, ok2 ? "OK" : "NG");
+    setOut($("out1"), t1 || "-");
+    setOut($("out2"), t2 || "-");
+
+    if(ok1 || ok2){
+      lastHitAt = performance.now();
+      log(`decode: L1=${ok1?"OK":"NG"}, L2=${ok2?"OK":"NG"} (th=${threshold})`, (ok1&&ok2) ? "ok" : "");
+    }
+
   }catch(e){
-    alert(e.message || e);
+    // 必要なら次行を有効化
+    // log("tick err: " + (e.message||e), "ng");
+  }finally{
+    busy = false;
+  }
+}
+
+// ---------- Events ----------
+$("btnStart").addEventListener("click", async ()=>{
+  try{
+    if(!navigator.mediaDevices?.getUserMedia) throw new Error("getUserMediaが利用できません。HTTPSで開いてください。");
+    await startCamera();
+    await initDecoder();
+  }catch(e){
+    log("開始エラー: " + (e.message||e), "ng");
+    alert("開始エラー: " + (e.message||e));
     stopCamera();
   }
 });
 
-$("btnStop").addEventListener("click", ()=>{
-  stopCamera();
-  $("btnStart").disabled = false;
-  $("btnStop").disabled = true;
+$("btnStop").addEventListener("click", ()=>stopCamera());
+$("btnFlip").addEventListener("click", async ()=>{
+  try{ await flipCamera(); }
+  catch(e){ log("切替エラー: " + (e.message||e), "ng"); }
 });
+
+$("thMode").addEventListener("change", ()=>{
+  const isFixed = $("thMode").value === "fixed";
+  $("thFixed").disabled = !isFixed;
+});
+$("thFixed").disabled = true;
 </script>
 </body>
-
 </html>
