@@ -514,6 +514,14 @@ const wctx = workCanvas.getContext("2d", { willReadFrequently:true });
 
 let lastHitAt = 0;
 
+  // ----- Sequential decode state -----
+let phase = 1;           // 1: read Layer1, 2: read Layer2, 3: done
+let locked1 = null;
+let locked2 = null;
+
+let lastCandidate = "";
+let stableCount = 0;
+const STABLE_HITS = 2;   // 同じ結果が連続で何回出たら確定するか
 async function tick(){
   rafId = requestAnimationFrame(tick);
   if(!stream) return;
@@ -574,8 +582,100 @@ async function tick(){
     const N = parseInt($("Nsel").value,10) || 25;
     const quiet = Math.max(0, Math.min(20, parseInt($("quiet").value,10) || 4));
 
-    const {g1, g2, threshold} = reconstructLayersFromCrop(crop, N, quiet);
+    // threshold
+    const thMode = $("thMode").value;
+    const th = (thMode === "auto") ? computeAutoThreshold(crop)
+                                   : Math.max(0, Math.min(255, parseInt($("thFixed").value,10)||128));
 
+    // ---- Sequential decode ----
+    if(phase === 1){
+      // Layer1 only
+      const g1 = reconstructOneLayerFromCrop(crop, N, quiet, 1, th);
+      drawGridToCanvas(cvL1, l1ctx, g1, quiet);
+
+      // Layer2 debug は空白にしておく（任意）
+      l2ctx.clearRect(0,0,cvL2.width,cvL2.height);
+
+      const t1 = await decodeCanvasQR(cvL1);
+
+      const ok1 = !!t1;
+      setTag($("tag1"), ok1, ok1 ? "READING" : "NG");
+      setOut($("out1"), t1 || (locked1 ?? "-"));
+
+      // Layer2 はまだ未読
+      setTag($("tag2"), false, locked2 ? "OK" : "-");
+      setOut($("out2"), locked2 || "-");
+
+      if(ok1){
+        // 連続同一ヒットで確定
+        if(t1 === lastCandidate) stableCount++;
+        else { lastCandidate = t1; stableCount = 1; }
+
+        lastHitAt = performance.now();
+        log(`phase1 hit: "${t1}" (stable=${stableCount}/${STABLE_HITS}, th=${th})`);
+
+        if(stableCount >= STABLE_HITS){
+          locked1 = t1;
+          phase = 2;
+          stableCount = 0;
+          lastCandidate = "";
+          setTag($("tag1"), true, "OK");
+          setOut($("out1"), locked1);
+          log(`Layer1 確定: "${locked1}" → Layer2 読み取りへ`, "ok");
+        }
+      }
+      return;
+    }
+
+    if(phase === 2){
+      // Layer2 only
+      const g2 = reconstructOneLayerFromCrop(crop, N, quiet, 2, th);
+      drawGridToCanvas(cvL2, l2ctx, g2, quiet);
+
+      // Layer1 はロック表示
+      setTag($("tag1"), true, "OK");
+      setOut($("out1"), locked1 || "-");
+
+      const t2 = await decodeCanvasQR(cvL2);
+
+      const ok2 = !!t2;
+      setTag($("tag2"), ok2, ok2 ? "READING" : "NG");
+      setOut($("out2"), t2 || (locked2 ?? "-"));
+
+      if(ok2){
+        if(t2 === lastCandidate) stableCount++;
+        else { lastCandidate = t2; stableCount = 1; }
+
+        lastHitAt = performance.now();
+        log(`phase2 hit: "${t2}" (stable=${stableCount}/${STABLE_HITS}, th=${th})`);
+
+        if(stableCount >= STABLE_HITS){
+          locked2 = t2;
+          phase = 3;
+          stableCount = 0;
+          lastCandidate = "";
+          setTag($("tag2"), true, "OK");
+          setOut($("out2"), locked2);
+          log(`Layer2 確定: "${locked2}"（完了）`, "ok");
+        }
+      }
+      return;
+    }
+
+    // phase === 3（完了）：表示固定、何もしない
+    setTag($("tag1"), !!locked1, locked1 ? "OK" : "-");
+    setTag($("tag2"), !!locked2, locked2 ? "OK" : "-");
+    setOut($("out1"), locked1 || "-");
+    setOut($("out2"), locked2 || "-");
+
+  }catch(e){
+    // デバッグしたいなら有効化
+    // log("tick err: " + (e.message||e), "ng");
+  }finally{
+    busy = false;
+  }
+}
+    
     drawGridToCanvas(cvL1, l1ctx, g1, quiet);
     drawGridToCanvas(cvL2, l2ctx, g2, quiet);
 
@@ -629,3 +729,4 @@ $("thFixed").disabled = true;
 </script>
 </body>
 </html>
+
