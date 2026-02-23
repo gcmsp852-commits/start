@@ -14,7 +14,7 @@
         
         /* 各画面のコンテナ */
         #startScreen, #resultScreen { padding: 20px; margin-top: 50px; }
-        #resultScreen { display: none; } /* 初期状態は非表示 */
+        #resultScreen { display: none; }
 
         .camera-container {
             position: relative; width: 100%; max-width: 600px; margin: 0 auto; background: #000; display: none;
@@ -83,14 +83,13 @@
     const overlayCanvas = document.getElementById('overlayCanvas');
     const ctx = overlayCanvas.getContext('2d');
     
-    // ZXing用のオフスクリーンキャンバス（画面には表示しない）
     const zxingCanvas = document.createElement('canvas');
     const zxingCtx = zxingCanvas.getContext('2d', { willReadFrequently: true });
 
     let isProcessing = false;
     let isScanning = false;
     let lastDetectTime = 0;
-    const SCAN_INTERVAL_MS = 200; // 解析頻度を秒間5回に制限して爆速化＆スマホの発熱防止
+    const SCAN_INTERVAL_MS = 200; 
     
     let useNativeDetector = false;
     let barcodeDetector = null;
@@ -140,13 +139,11 @@
 
     async function startCamera() {
         try {
-            // フリーズ防止：解像度指定を外し、背面カメラのみ要求
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'environment' }
             });
             video.srcObject = stream;
             
-            // loadedmetadataが発火しないスマホ対策（1秒で強制突破）
             await new Promise((resolve) => {
                 video.onloadedmetadata = resolve;
                 setTimeout(resolve, 1000); 
@@ -174,25 +171,20 @@
         return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
 
-    // メインループ（描画は毎フレーム、解析は間引く）
     async function scanLoop() {
         if (!isScanning) return;
 
-        // キャンバスのサイズをビデオに合わせる
         if (video.videoWidth && overlayCanvas.width !== video.videoWidth) {
             overlayCanvas.width = video.videoWidth;
             overlayCanvas.height = video.videoHeight;
         }
 
-        // 古い枠線を消去
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-        // 現在のQRに枠線を描画（滑らかに追従させるため毎フレーム実行）
         if (firstQR) drawBoundingBox(firstQR.points, '#00E676');
         if (secondQR) drawBoundingBox(secondQR.points, '#29B6F6');
 
         const now = Date.now();
-        // 解析を一定間隔（200ms）で行う
         if (!isProcessing && now - lastDetectTime > SCAN_INTERVAL_MS && video.readyState >= 2) {
             isProcessing = true;
             lastDetectTime = now;
@@ -222,26 +214,25 @@
                         return { text: r.getText(), points: pts, center: getCenter(pts) };
                     });
                 }
-            } catch (err) { /* 未検出時のエラーは無視 */ }
+            } catch (err) { }
 
             processDetections(detectedItems);
             isProcessing = false;
         }
 
-        // ▼変更点：2つ揃ったら結果画面へ遷移する処理
         if (firstQR && secondQR) {
             showResultScreen();
-            isScanning = false; // 2つ揃ったらスキャン停止
+            isScanning = false;
             return;
         }
 
         requestAnimationFrame(scanLoop);
     }
 
-    // コアロジック：ブレと同一QRの判定 (一切変更なし)
     function processDetections(items) {
         if (items.length === 0) return;
 
+        // 2つ同時に映っている場合は即座に両方採用
         if (items.length >= 2) {
             if (!firstQR) {
                 firstQR = items[0];
@@ -264,6 +255,7 @@
             }
         }
 
+        // 1つだけ映っている場合（または順番にスキャンしている場合）
         if (items.length === 1) {
             const item = items[0];
             
@@ -272,16 +264,27 @@
                 updateUI();
             } else if (!secondQR) {
                 if (item.text !== firstQR.text) {
+                    // データが違うなら即座に2個目として採用
                     secondQR = item;
                     updateUI();
                 } else {
+                    // ▼▼▼ 改良ポイント：適応型（アダプティブ）しきい値 ▼▼▼
+                    // 1個目の位置からの距離を計算
                     const dist = getDistance(firstQR.center, item.center);
-                    const distanceThreshold = overlayCanvas.width * 0.35; 
+                    
+                    // 映っているQRコードの「上部の辺の長さ（ピクセル）」を計算してサイズを把握
+                    const qrSize = getDistance(item.points[0], item.points[1]);
+                    
+                    // 「画面幅の12%」と「QRコードのサイズの70%」のうち、大きい方をしきい値にする
+                    // これにより、手ブレを無視しつつ、隣のQRには即座に反応できるようになります
+                    const distanceThreshold = Math.max(overlayCanvas.width * 0.12, qrSize * 0.7);
 
                     if (dist > distanceThreshold) {
+                        // しきい値を超えて動いたので、別物（2個目）と判定！
                         secondQR = item;
                         updateUI();
                     } else {
+                        // 距離が近い＝同じQRを見続けているだけなので、枠線を追従させるために位置だけ更新
                         firstQR.points = item.points;
                         firstQR.center = item.center;
                     }
@@ -290,40 +293,31 @@
         }
     }
 
-    // カメラ画面下の経過UIを更新
     function updateUI() {
         if (firstQR) document.getElementById('text1').innerText = firstQR.text;
         if (secondQR) document.getElementById('text2').innerText = secondQR.text;
     }
 
-    // 結果画面への遷移処理
     function showResultScreen() {
-        // カメラとステータスを隠し、結果画面を表示
         document.getElementById('cameraContainer').style.display = 'none';
         document.getElementById('statusPanel').style.display = 'none';
         document.getElementById('resultScreen').style.display = 'block';
         
-        // 最終結果をテキストにセット
         document.getElementById('finalText1').innerText = firstQR.text;
         document.getElementById('finalText2').innerText = secondQR.text;
     }
 
-    // 戻る（再スキャン）処理
     function goBack() {
-        // データをリセット
         firstQR = null;
         secondQR = null;
         
-        // UIテキストをリセット
         document.getElementById('text1').innerText = "未検出";
         document.getElementById('text2').innerText = "未検出";
         
-        // 画面をカメラ状態に戻す
         document.getElementById('resultScreen').style.display = 'none';
         document.getElementById('cameraContainer').style.display = 'block';
         document.getElementById('statusPanel').style.display = 'block';
         
-        // スキャン再開
         ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
         isScanning = true;
         requestAnimationFrame(scanLoop);
