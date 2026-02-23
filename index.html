@@ -11,40 +11,25 @@
             margin: 0; padding: 0; background-color: #121212; color: #ffffff; text-align: center;
         }
         h2 { margin: 15px 0; font-size: 1.2rem; }
-        
-        /* 起動画面 */
-        #startScreen {
-            padding: 20px;
-            margin-top: 50px;
-        }
-
+        #startScreen { padding: 20px; margin-top: 50px; }
         .camera-container {
-            position: relative; width: 100%; max-width: 600px; margin: 0 auto; background: #000;
-            display: none; /* 初期状態では隠す */
+            position: relative; width: 100%; max-width: 600px; margin: 0 auto; background: #000; display: none;
         }
-        video {
-            width: 100%; display: block; object-fit: cover;
-        }
-        canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
-        }
+        video { width: 100%; display: block; object-fit: cover; }
+        /* キャンバスは枠線描画専用。透明にしてビデオの上に被せる */
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         .status-panel {
-            padding: 15px; background: #1e1e1e; border-top: 1px solid #333; text-align: left; max-width: 600px; margin: 0 auto;
-            display: none; /* 初期状態では隠す */
+            padding: 15px; background: #1e1e1e; border-top: 1px solid #333; text-align: left; max-width: 600px; margin: 0 auto; display: none;
         }
-        .qr-result {
-            margin-bottom: 10px; padding: 10px; border-radius: 8px; background: #2c2c2c;
-        }
+        .qr-result { margin-bottom: 10px; padding: 10px; border-radius: 8px; background: #2c2c2c; word-break: break-all; }
         .qr-1 { border-left: 5px solid #00E676; }
         .qr-2 { border-left: 5px solid #29B6F6; }
-        
         button {
             width: 100%; max-width: 300px; padding: 15px; font-size: 1.1rem; font-weight: bold; 
             background: #6200EE; color: white; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px;
         }
         button:active { background: #3700B3; }
         button:disabled { background: #555; cursor: not-allowed; }
-        
         #resetBtn { display: none; max-width: 100%; background: #03DAC6; color: #000; }
         #resetBtn:active { background: #018786; }
     </style>
@@ -61,30 +46,34 @@
     </div>
 
     <div class="camera-container" id="cameraContainer">
-        <video id="video" playsinline muted></video>
-        <canvas id="canvas"></canvas>
+        <video id="video" playsinline autoplay muted></video>
+        <canvas id="overlayCanvas"></canvas>
     </div>
 
     <div class="status-panel" id="statusPanel">
         <div id="detectorInfo" style="font-size: 0.8rem; color: #aaa; margin-bottom: 10px;">読取エンジン準備中...</div>
-        
         <div id="result1" class="qr-result qr-1">
             <strong>1個目:</strong> <span id="text1">未検出</span>
         </div>
         <div id="result2" class="qr-result qr-2">
             <strong>2個目:</strong> <span id="text2">未検出</span>
         </div>
-
         <button id="resetBtn" onclick="resetScanner()">🔄 もう一度スキャンする</button>
     </div>
 
 <script>
     const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const ctx = overlayCanvas.getContext('2d');
     
+    // ZXing用のオフスクリーンキャンバス（画面には表示しない）
+    const zxingCanvas = document.createElement('canvas');
+    const zxingCtx = zxingCanvas.getContext('2d', { willReadFrequently: true });
+
     let isProcessing = false;
     let isScanning = false;
+    let lastDetectTime = 0;
+    const SCAN_INTERVAL_MS = 200; // 解析頻度を秒間5回に制限して爆速化＆スマホの発熱防止
     
     let useNativeDetector = false;
     let barcodeDetector = null;
@@ -93,7 +82,6 @@
     let firstQR = null;
     let secondQR = null;
 
-    // 「カメラを起動する」ボタンを押したときの処理
     async function startApp() {
         const startBtn = document.getElementById('startBtn');
         startBtn.disabled = true;
@@ -103,7 +91,6 @@
         const success = await startCamera();
         
         if (success) {
-            // UIの切り替え
             document.getElementById('startScreen').style.display = 'none';
             document.getElementById('cameraContainer').style.display = 'block';
             document.getElementById('statusPanel').style.display = 'block';
@@ -113,7 +100,6 @@
         }
     }
 
-    // 読み取りエンジンの初期化
     async function initEngines() {
         if ('BarcodeDetector' in window) {
             try {
@@ -121,44 +107,45 @@
                 if (formats.includes('qr_code')) {
                     barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
                     useNativeDetector = true;
-                    document.getElementById('detectorInfo').innerText = "⚡ エンジン: BarcodeDetector (Native)";
+                    document.getElementById('detectorInfo').innerText = "⚡ エンジン: BarcodeDetector (爆速・Native)";
                     return;
                 }
-            } catch (e) {
-                console.warn("BarcodeDetectorの初期化失敗", e);
-            }
+            } catch (e) {}
         }
         
-        // フォールバック
-        zxingMultiReader = new ZXing.qrcode.QRCodeMultiReader();
-        document.getElementById('detectorInfo').innerText = "🐢 エンジン: ZXing (decodeMultiple)";
+        if (typeof ZXing !== 'undefined') {
+            zxingMultiReader = new ZXing.qrcode.QRCodeMultiReader();
+            document.getElementById('detectorInfo').innerText = "🐢 エンジン: ZXing (フォールバック)";
+        } else {
+            alert("ZXingライブラリの読み込みに失敗しました。再読み込みしてください。");
+        }
     }
 
-    // カメラの取得
     async function startCamera() {
         try {
+            // フリーズ防止：解像度指定を外し、背面カメラのみ要求
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+                video: { facingMode: 'environment' }
             });
             video.srcObject = stream;
             
-            return new Promise((resolve) => {
-                video.addEventListener('loadedmetadata', () => {
-                    video.play();
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    isScanning = true;
-                    requestAnimationFrame(scanLoop);
-                    resolve(true);
-                }, { once: true });
+            // loadedmetadataが発火しないスマホ対策（1秒で強制突破）
+            await new Promise((resolve) => {
+                video.onloadedmetadata = resolve;
+                setTimeout(resolve, 1000); 
             });
+            
+            await video.play().catch(e => console.warn("自動再生ブロック:", e));
+            
+            isScanning = true;
+            requestAnimationFrame(scanLoop);
+            return true;
         } catch (err) {
-            alert("カメラへのアクセスが拒否されたか、エラーが発生しました。\nブラウザのカメラ権限を確認してください。");
+            alert("カメラを起動できませんでした。\n権限を確認してください。\nエラー: " + err.message);
             return false;
         }
     }
 
-    // 幾何計算用の関数群
     function getCenter(points) {
         if (!points || points.length === 0) return { x: 0, y: 0 };
         let sumX = 0, sumY = 0;
@@ -170,37 +157,46 @@
         return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
     }
 
-    // スキャンのメインループ
+    // メインループ（描画は毎フレーム、解析は間引く）
     async function scanLoop() {
         if (!isScanning) return;
 
-        if (firstQR && secondQR) {
-            document.getElementById('resetBtn').style.display = 'block';
-            isScanning = false;
-            return;
+        // キャンバスのサイズをビデオに合わせる
+        if (video.videoWidth && overlayCanvas.width !== video.videoWidth) {
+            overlayCanvas.width = video.videoWidth;
+            overlayCanvas.height = video.videoHeight;
         }
 
-        if (!isProcessing && video.readyState === video.HAVE_ENOUGH_DATA) {
-            isProcessing = true;
-            
-            if (canvas.width !== video.videoWidth) {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-            }
+        // 古い枠線を消去
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // 現在のQRに枠線を描画（滑らかに追従させるため毎フレーム実行）
+        if (firstQR) drawBoundingBox(firstQR.points, '#00E676');
+        if (secondQR) drawBoundingBox(secondQR.points, '#29B6F6');
+
+        const now = Date.now();
+        // 解析を一定間隔（200ms）で行う
+        if (!isProcessing && now - lastDetectTime > SCAN_INTERVAL_MS && video.readyState >= 2) {
+            isProcessing = true;
+            lastDetectTime = now;
             let detectedItems = [];
 
             try {
                 if (useNativeDetector) {
-                    const barcodes = await barcodeDetector.detect(canvas);
+                    // キャンバスではなくビデオを直接渡す！劇的に速くなります
+                    const barcodes = await barcodeDetector.detect(video);
                     detectedItems = barcodes.map(b => ({
                         text: b.rawValue,
                         points: b.cornerPoints,
                         center: getCenter(b.cornerPoints)
                     }));
-                } else {
-                    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+                } else if (zxingMultiReader) {
+                    // ZXing用に見えないキャンバスへ転写して解析
+                    zxingCanvas.width = overlayCanvas.width;
+                    zxingCanvas.height = overlayCanvas.height;
+                    zxingCtx.drawImage(video, 0, 0, zxingCanvas.width, zxingCanvas.height);
+                    
+                    const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(zxingCanvas);
                     const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminanceSource));
                     const hints = new Map();
                     hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
@@ -211,41 +207,83 @@
                         return { text: r.getText(), points: pts, center: getCenter(pts) };
                     });
                 }
-            } catch (err) {}
+            } catch (err) { /* 未検出時のエラーは無視 */ }
 
             processDetections(detectedItems);
-            
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (firstQR) drawBoundingBox(firstQR.points, '#00E676');
-            if (secondQR) drawBoundingBox(secondQR.points, '#29B6F6');
-
             isProcessing = false;
         }
+
+        if (firstQR && secondQR) {
+            document.getElementById('resetBtn').style.display = 'block';
+            isScanning = false; // 2つ揃ったら停止
+            return;
+        }
+
         requestAnimationFrame(scanLoop);
     }
 
+    // コアロジック：ブレと同一QRの判定
     function processDetections(items) {
         if (items.length === 0) return;
-        const distanceThreshold = canvas.width * 0.25;
 
-        for (const item of items) {
+        // 同じフレームに2つQRが映っている場合は最優先でツインとして採用
+        if (items.length >= 2) {
+            if (!firstQR) {
+                firstQR = items[0];
+                secondQR = items[1];
+                updateUI();
+                return;
+            }
+            if (firstQR && !secondQR) {
+                // 1つ目と違うほうを2つ目に採用
+                const dist0 = getDistance(firstQR.center, items[0].center);
+                const dist1 = getDistance(firstQR.center, items[1].center);
+                if (dist0 > dist1) {
+                    secondQR = items[0];
+                    firstQR = items[1]; // 位置更新
+                } else {
+                    secondQR = items[1];
+                    firstQR = items[0]; // 位置更新
+                }
+                updateUI();
+                return;
+            }
+        }
+
+        // 1つだけ映っている場合
+        if (items.length === 1) {
+            const item = items[0];
+            
             if (!firstQR) {
                 firstQR = item;
-                document.getElementById('text1').innerText = item.text;
-                continue;
-            }
-            if (!secondQR) {
-                const dist = getDistance(firstQR.center, item.center);
-                if (dist > distanceThreshold) {
+                updateUI();
+            } else if (!secondQR) {
+                // テキストが違うなら、問答無用で別QR(2個目)として扱う
+                if (item.text !== firstQR.text) {
                     secondQR = item;
-                    document.getElementById('text2').innerText = item.text;
-                    break; 
+                    updateUI();
                 } else {
-                    firstQR.points = item.points;
-                    firstQR.center = item.center;
+                    // テキストが同じ場合、カメラのブレか、本物のツインかを距離で判定
+                    const dist = getDistance(firstQR.center, item.center);
+                    const distanceThreshold = overlayCanvas.width * 0.35; // 閾値を35%に引き上げ
+
+                    if (dist > distanceThreshold) {
+                        // 画面幅の35%以上大きく動いた場合は2つ目とみなす
+                        secondQR = item;
+                        updateUI();
+                    } else {
+                        // 距離が近い場合は「同じQRを見続けているだけ（ブレ）」とみなし、位置だけ更新
+                        firstQR.points = item.points;
+                        firstQR.center = item.center;
+                    }
                 }
             }
         }
+    }
+
+    function updateUI() {
+        if (firstQR) document.getElementById('text1').innerText = firstQR.text;
+        if (secondQR) document.getElementById('text2').innerText = secondQR.text;
     }
 
     function drawBoundingBox(points, color) {
@@ -259,7 +297,7 @@
         ctx.lineWidth = 6;
         ctx.strokeStyle = color;
         ctx.stroke();
-        ctx.fillStyle = color + '33';
+        ctx.fillStyle = color + '44'; // 半透明
         ctx.fill();
     }
 
@@ -269,7 +307,7 @@
         document.getElementById('text1').innerText = "未検出";
         document.getElementById('text2').innerText = "未検出";
         document.getElementById('resetBtn').style.display = 'none';
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
         isScanning = true;
         requestAnimationFrame(scanLoop);
     }
